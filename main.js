@@ -3,26 +3,33 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 // Scene setup
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x2c3e50);
+scene.background = new THREE.Color(0x1a1a2e);
+scene.fog = new THREE.Fog(0x1a1a2e, 20, 50);
 
 const camera = new THREE.PerspectiveCamera(
-    75,
+    50,
     window.innerWidth / window.innerHeight,
     0.1,
     1000
 );
-camera.position.set(0, 0, 15);
+camera.position.set(0, 2, 25);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
 document.getElementById('canvas-container').appendChild(renderer.domElement);
 
 // Orbit Controls
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.dampingFactor = 0.05;
+controls.dampingFactor = 0.08;
+controls.minDistance = 10;
+controls.maxDistance = 40;
 
 // Raycaster for click detection
 const raycaster = new THREE.Raycaster();
@@ -43,205 +50,455 @@ const upperTeeth = [];
 const lowerTeeth = [];
 let selectedTooth = null;
 
-// Materials
-const teethMaterial = new THREE.MeshPhongMaterial({
-    color: 0xffffff,
-    shininess: 100,
-    specular: 0x222222
+// Improved Materials
+const teethMaterial = new THREE.MeshStandardMaterial({
+    color: 0xfff8f0,
+    roughness: 0.3,
+    metalness: 0.1,
+    envMapIntensity: 0.5
 });
 
-const gumMaterial = new THREE.MeshPhongMaterial({
-    color: 0xff9999,
-    shininess: 30
+const gumMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffb3ba,
+    roughness: 0.7,
+    metalness: 0.0,
+    envMapIntensity: 0.3
 });
 
-const tongueMaterial = new THREE.MeshPhongMaterial({
-    color: 0xff6666,
-    shininess: 20
+const tongueMaterial = new THREE.MeshStandardMaterial({
+    color: 0xff6b7a,
+    roughness: 0.8,
+    metalness: 0.0,
+    envMapIntensity: 0.2
 });
 
-// Create a single tooth
-function createTooth(type = 'molar') {
+const innerMouthMaterial = new THREE.MeshStandardMaterial({
+    color: 0xff9ba3,
+    roughness: 0.9,
+    metalness: 0.0,
+    side: THREE.DoubleSide
+});
+
+// Create realistic tooth with proper shape
+function createTooth(type = 'molar', scale = 1) {
     const toothGroup = new THREE.Group();
 
-    // Main tooth body (crown)
     let crownGeometry;
+
     if (type === 'incisor') {
-        crownGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.6);
+        // Incisor - flat and blade-like
+        const shape = new THREE.Shape();
+        shape.moveTo(0, 0);
+        shape.lineTo(0.4, 0.1);
+        shape.quadraticCurveTo(0.45, 0.6, 0.4, 1.1);
+        shape.quadraticCurveTo(0.3, 1.4, 0, 1.5);
+        shape.quadraticCurveTo(-0.3, 1.4, -0.4, 1.1);
+        shape.quadraticCurveTo(-0.45, 0.6, -0.4, 0.1);
+        shape.lineTo(0, 0);
+
+        const extrudeSettings = {
+            steps: 1,
+            depth: 0.6,
+            bevelEnabled: true,
+            bevelThickness: 0.1,
+            bevelSize: 0.08,
+            bevelSegments: 5
+        };
+
+        crownGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+        crownGeometry.translate(0, 0, -0.3);
+
     } else if (type === 'canine') {
-        crownGeometry = new THREE.ConeGeometry(0.4, 1.5, 8);
+        // Canine - pointed
+        const points = [];
+        for (let i = 0; i < 10; i++) {
+            const t = i / 9;
+            const radius = 0.35 * Math.sin(t * Math.PI);
+            points.push(new THREE.Vector2(radius, t * 1.8));
+        }
+        crownGeometry = new THREE.LatheGeometry(points, 12);
+
+    } else if (type === 'premolar') {
+        // Premolar - medium with two cusps
+        const shape = new THREE.Shape();
+        shape.moveTo(-0.4, 0);
+        shape.quadraticCurveTo(-0.5, 0.3, -0.4, 0.6);
+        shape.lineTo(-0.2, 1.1);
+        shape.quadraticCurveTo(0, 1.2, 0.2, 1.1);
+        shape.lineTo(0.4, 0.6);
+        shape.quadraticCurveTo(0.5, 0.3, 0.4, 0);
+        shape.quadraticCurveTo(0, -0.1, -0.4, 0);
+
+        const extrudeSettings = {
+            steps: 2,
+            depth: 0.7,
+            bevelEnabled: true,
+            bevelThickness: 0.12,
+            bevelSize: 0.1,
+            bevelSegments: 5
+        };
+
+        crownGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+        crownGeometry.translate(0, 0, -0.35);
+
     } else { // molar
-        crownGeometry = new THREE.BoxGeometry(1, 1, 0.8);
+        // Molar - large with multiple cusps
+        const shape = new THREE.Shape();
+        shape.moveTo(-0.5, 0);
+        shape.quadraticCurveTo(-0.55, 0.2, -0.5, 0.4);
+        shape.lineTo(-0.3, 0.9);
+        shape.lineTo(-0.1, 1.0);
+        shape.lineTo(0.1, 1.0);
+        shape.lineTo(0.3, 0.9);
+        shape.lineTo(0.5, 0.4);
+        shape.quadraticCurveTo(0.55, 0.2, 0.5, 0);
+        shape.quadraticCurveTo(0, -0.1, -0.5, 0);
+
+        const extrudeSettings = {
+            steps: 2,
+            depth: 0.9,
+            bevelEnabled: true,
+            bevelThickness: 0.15,
+            bevelSize: 0.12,
+            bevelSegments: 5
+        };
+
+        crownGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+        crownGeometry.translate(0, 0, -0.45);
     }
+
+    // Apply scale
+    crownGeometry.scale(scale, scale, scale);
 
     const crown = new THREE.Mesh(crownGeometry, teethMaterial.clone());
     crown.castShadow = true;
     crown.receiveShadow = true;
     toothGroup.add(crown);
 
-    // Tooth root
-    const rootGeometry = new THREE.CylinderGeometry(0.3, 0.2, 0.8, 8);
-    const root = new THREE.Mesh(rootGeometry, teethMaterial.clone());
-    root.position.y = -0.9;
-    root.material.color.setHex(0xf5f5dc);
+    // Tooth root (hidden in gum)
+    const rootPoints = [];
+    rootPoints.push(new THREE.Vector2(0.25 * scale, 0));
+    rootPoints.push(new THREE.Vector2(0.28 * scale, -0.3 * scale));
+    rootPoints.push(new THREE.Vector2(0.22 * scale, -0.7 * scale));
+    rootPoints.push(new THREE.Vector2(0.15 * scale, -1.2 * scale));
+    rootPoints.push(new THREE.Vector2(0, -1.5 * scale));
+
+    const rootGeometry = new THREE.LatheGeometry(rootPoints, 8);
+    const rootMaterial = teethMaterial.clone();
+    rootMaterial.color.setHex(0xf5f0e8);
+    const root = new THREE.Mesh(rootGeometry, rootMaterial);
+    root.position.y = -0.1;
     toothGroup.add(root);
 
     toothGroup.userData.isSelectable = true;
     return toothGroup;
 }
 
-// Create upper teeth (16 teeth)
+// Create upper teeth with proper dental arch
 function createUpperTeeth() {
-    const positions = [
-        // Front incisors (4)
-        { x: -1.2, z: 4, type: 'incisor', rot: 0 },
-        { x: -0.4, z: 4, type: 'incisor', rot: 0 },
-        { x: 0.4, z: 4, type: 'incisor', rot: 0 },
-        { x: 1.2, z: 4, type: 'incisor', rot: 0 },
-        // Canines (2)
-        { x: -2.2, z: 3.5, type: 'canine', rot: -0.3 },
-        { x: 2.2, z: 3.5, type: 'canine', rot: 0.3 },
-        // Premolars (4)
-        { x: -3.2, z: 2.5, type: 'molar', rot: -0.4 },
-        { x: -4, z: 1.5, type: 'molar', rot: -0.5 },
-        { x: 3.2, z: 2.5, type: 'molar', rot: 0.4 },
-        { x: 4, z: 1.5, type: 'molar', rot: 0.5 },
-        // Molars (6)
-        { x: -4.5, z: 0.5, type: 'molar', rot: -0.6 },
-        { x: -4.8, z: -0.5, type: 'molar', rot: -0.7 },
-        { x: -5, z: -1.5, type: 'molar', rot: -0.8 },
-        { x: 4.5, z: 0.5, type: 'molar', rot: 0.6 },
-        { x: 4.8, z: -0.5, type: 'molar', rot: 0.7 },
-        { x: 5, z: -1.5, type: 'molar', rot: 0.8 }
+    const teethConfig = [
+        // Central incisors
+        { angle: -0.15, radius: 5.5, type: 'incisor', scale: 1.1, tilt: 0.1 },
+        { angle: 0.15, radius: 5.5, type: 'incisor', scale: 1.1, tilt: -0.1 },
+        // Lateral incisors
+        { angle: -0.35, radius: 5.3, type: 'incisor', scale: 0.95, tilt: 0.15 },
+        { angle: 0.35, radius: 5.3, type: 'incisor', scale: 0.95, tilt: -0.15 },
+        // Canines
+        { angle: -0.6, radius: 5.0, type: 'canine', scale: 1.0, tilt: 0.2 },
+        { angle: 0.6, radius: 5.0, type: 'canine', scale: 1.0, tilt: -0.2 },
+        // First premolars
+        { angle: -0.85, radius: 4.7, type: 'premolar', scale: 0.95, tilt: 0.25 },
+        { angle: 0.85, radius: 4.7, type: 'premolar', scale: 0.95, tilt: -0.25 },
+        // Second premolars
+        { angle: -1.1, radius: 4.4, type: 'premolar', scale: 1.0, tilt: 0.3 },
+        { angle: 1.1, radius: 4.4, type: 'premolar', scale: 1.0, tilt: -0.3 },
+        // First molars
+        { angle: -1.4, radius: 4.0, type: 'molar', scale: 1.1, tilt: 0.35 },
+        { angle: 1.4, radius: 4.0, type: 'molar', scale: 1.1, tilt: -0.35 },
+        // Second molars
+        { angle: -1.7, radius: 3.5, type: 'molar', scale: 1.05, tilt: 0.4 },
+        { angle: 1.7, radius: 3.5, type: 'molar', scale: 1.05, tilt: -0.4 },
+        // Third molars (wisdom teeth)
+        { angle: -2.0, radius: 3.0, type: 'molar', scale: 0.9, tilt: 0.45 },
+        { angle: 2.0, radius: 3.0, type: 'molar', scale: 0.9, tilt: -0.45 }
     ];
 
-    positions.forEach((pos, index) => {
-        const tooth = createTooth(pos.type);
-        tooth.position.set(pos.x, 2, pos.z);
-        tooth.rotation.y = pos.rot;
+    teethConfig.forEach((config, index) => {
+        const tooth = createTooth(config.type, config.scale);
+        const x = Math.sin(config.angle) * config.radius;
+        const z = Math.cos(config.angle) * config.radius;
+
+        tooth.position.set(x, 1.5, z);
+        tooth.rotation.y = -config.angle;
+        tooth.rotation.z = config.tilt;
         tooth.userData.index = index;
         tooth.userData.jaw = 'upper';
+
         upperTeeth.push(tooth);
         upperJaw.add(tooth);
     });
 }
 
-// Create lower teeth (16 teeth)
+// Create lower teeth with proper dental arch
 function createLowerTeeth() {
-    const positions = [
-        // Front incisors (4)
-        { x: -1, z: 3.8, type: 'incisor', rot: 0 },
-        { x: -0.3, z: 3.8, type: 'incisor', rot: 0 },
-        { x: 0.3, z: 3.8, type: 'incisor', rot: 0 },
-        { x: 1, z: 3.8, type: 'incisor', rot: 0 },
-        // Canines (2)
-        { x: -2, z: 3.3, type: 'canine', rot: -0.3 },
-        { x: 2, z: 3.3, type: 'canine', rot: 0.3 },
-        // Premolars (4)
-        { x: -3, z: 2.3, type: 'molar', rot: -0.4 },
-        { x: -3.8, z: 1.3, type: 'molar', rot: -0.5 },
-        { x: 3, z: 2.3, type: 'molar', rot: 0.4 },
-        { x: 3.8, z: 1.3, type: 'molar', rot: 0.5 },
-        // Molars (6)
-        { x: -4.3, z: 0.3, type: 'molar', rot: -0.6 },
-        { x: -4.6, z: -0.7, type: 'molar', rot: -0.7 },
-        { x: -4.8, z: -1.7, type: 'molar', rot: -0.8 },
-        { x: 4.3, z: 0.3, type: 'molar', rot: 0.6 },
-        { x: 4.6, z: -0.7, type: 'molar', rot: 0.7 },
-        { x: 4.8, z: -1.7, type: 'molar', rot: 0.8 }
+    const teethConfig = [
+        // Central incisors (smaller)
+        { angle: -0.12, radius: 4.8, type: 'incisor', scale: 0.85, tilt: -0.08 },
+        { angle: 0.12, radius: 4.8, type: 'incisor', scale: 0.85, tilt: 0.08 },
+        // Lateral incisors
+        { angle: -0.3, radius: 4.7, type: 'incisor', scale: 0.9, tilt: -0.12 },
+        { angle: 0.3, radius: 4.7, type: 'incisor', scale: 0.9, tilt: 0.12 },
+        // Canines
+        { angle: -0.55, radius: 4.5, type: 'canine', scale: 0.95, tilt: -0.18 },
+        { angle: 0.55, radius: 4.5, type: 'canine', scale: 0.95, tilt: 0.18 },
+        // First premolars
+        { angle: -0.8, radius: 4.2, type: 'premolar', scale: 0.9, tilt: -0.22 },
+        { angle: 0.8, radius: 4.2, type: 'premolar', scale: 0.9, tilt: 0.22 },
+        // Second premolars
+        { angle: -1.05, radius: 3.9, type: 'premolar', scale: 0.95, tilt: -0.27 },
+        { angle: 1.05, radius: 3.9, type: 'premolar', scale: 0.95, tilt: 0.27 },
+        // First molars
+        { angle: -1.35, radius: 3.5, type: 'molar', scale: 1.0, tilt: -0.32 },
+        { angle: 1.35, radius: 3.5, type: 'molar', scale: 1.0, tilt: 0.32 },
+        // Second molars
+        { angle: -1.65, radius: 3.0, type: 'molar', scale: 0.95, tilt: -0.37 },
+        { angle: 1.65, radius: 3.0, type: 'molar', scale: 0.95, tilt: 0.37 },
+        // Third molars
+        { angle: -1.95, radius: 2.5, type: 'molar', scale: 0.85, tilt: -0.42 },
+        { angle: 1.95, radius: 2.5, type: 'molar', scale: 0.85, tilt: 0.42 }
     ];
 
-    positions.forEach((pos, index) => {
-        const tooth = createTooth(pos.type);
-        tooth.position.set(pos.x, -2, pos.z);
-        tooth.rotation.y = pos.rot;
+    teethConfig.forEach((config, index) => {
+        const tooth = createTooth(config.type, config.scale);
+        const x = Math.sin(config.angle) * config.radius;
+        const z = Math.cos(config.angle) * config.radius;
+
+        tooth.position.set(x, -1.5, z);
+        tooth.rotation.y = -config.angle;
+        tooth.rotation.z = config.tilt;
         tooth.userData.index = index;
         tooth.userData.jaw = 'lower';
+
         lowerTeeth.push(tooth);
         lowerJaw.add(tooth);
     });
 }
 
-// Create gums
+// Create realistic gums using curved geometry
 function createGums() {
     // Upper gum
+    const upperGumCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-3.5, 2.5, 2),
+        new THREE.Vector3(-5.0, 2.3, 0),
+        new THREE.Vector3(-4.5, 2.2, -3),
+        new THREE.Vector3(0, 2.4, -4),
+        new THREE.Vector3(4.5, 2.2, -3),
+        new THREE.Vector3(5.0, 2.3, 0),
+        new THREE.Vector3(3.5, 2.5, 2),
+        new THREE.Vector3(0, 2.6, 3.5),
+        new THREE.Vector3(-3.5, 2.5, 2)
+    ], true);
+
     const upperGumShape = new THREE.Shape();
-    upperGumShape.moveTo(-6, 4);
-    upperGumShape.quadraticCurveTo(-5.5, 4.5, -5, 4);
-    upperGumShape.quadraticCurveTo(-2, 5, 0, 5);
-    upperGumShape.quadraticCurveTo(2, 5, 5, 4);
-    upperGumShape.quadraticCurveTo(5.5, 4.5, 6, 4);
-    upperGumShape.quadraticCurveTo(6, -2, 5, -2);
-    upperGumShape.quadraticCurveTo(2, -1, 0, -1);
-    upperGumShape.quadraticCurveTo(-2, -1, -5, -2);
-    upperGumShape.quadraticCurveTo(-6, -2, -6, 4);
+    upperGumShape.moveTo(0, 0);
+    upperGumShape.lineTo(1.5, 0);
+    upperGumShape.quadraticCurveTo(1.6, 0.8, 1.4, 1.5);
+    upperGumShape.lineTo(0.5, 2.2);
+    upperGumShape.quadraticCurveTo(0, 2.3, -0.5, 2.2);
+    upperGumShape.lineTo(-1.4, 1.5);
+    upperGumShape.quadraticCurveTo(-1.6, 0.8, -1.5, 0);
+    upperGumShape.lineTo(0, 0);
 
     const upperGumGeometry = new THREE.ExtrudeGeometry(upperGumShape, {
-        depth: 2,
-        bevelEnabled: true,
-        bevelThickness: 0.3,
-        bevelSize: 0.3,
-        bevelSegments: 3
+        steps: 80,
+        bevelEnabled: false,
+        extrudePath: upperGumCurve
     });
 
     const upperGum = new THREE.Mesh(upperGumGeometry, gumMaterial);
-    upperGum.position.set(0, 1.5, -1);
+    upperGum.castShadow = true;
     upperGum.receiveShadow = true;
     upperJaw.add(upperGum);
 
     // Lower gum
-    const lowerGumGeometry = upperGumGeometry.clone();
+    const lowerGumCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-3.0, -2.3, 1.5),
+        new THREE.Vector3(-4.5, -2.1, -0.5),
+        new THREE.Vector3(-4.0, -2.0, -2.5),
+        new THREE.Vector3(0, -2.2, -3.5),
+        new THREE.Vector3(4.0, -2.0, -2.5),
+        new THREE.Vector3(4.5, -2.1, -0.5),
+        new THREE.Vector3(3.0, -2.3, 1.5),
+        new THREE.Vector3(0, -2.4, 3),
+        new THREE.Vector3(-3.0, -2.3, 1.5)
+    ], true);
+
+    const lowerGumGeometry = new THREE.ExtrudeGeometry(upperGumShape, {
+        steps: 80,
+        bevelEnabled: false,
+        extrudePath: lowerGumCurve
+    });
+
     const lowerGum = new THREE.Mesh(lowerGumGeometry, gumMaterial);
-    lowerGum.position.set(0, -1.5, -1);
+    lowerGum.castShadow = true;
     lowerGum.receiveShadow = true;
     lowerJaw.add(lowerGum);
 }
 
-// Create tongue
+// Create realistic tongue
 function createTongue() {
-    const tongueGeometry = new THREE.SphereGeometry(3, 32, 32);
-    tongueGeometry.scale(1, 0.4, 1.2);
+    // Main tongue body
+    const tongueShape = new THREE.Shape();
+    tongueShape.moveTo(0, 0);
+    tongueShape.bezierCurveTo(1.5, 0.5, 2.5, 1.5, 2.8, 3);
+    tongueShape.bezierCurveTo(2.5, 4, 1.5, 4.5, 0, 4.8);
+    tongueShape.bezierCurveTo(-1.5, 4.5, -2.5, 4, -2.8, 3);
+    tongueShape.bezierCurveTo(-2.5, 1.5, -1.5, 0.5, 0, 0);
+
+    const tongueGeometry = new THREE.ExtrudeGeometry(tongueShape, {
+        depth: 1.2,
+        bevelEnabled: true,
+        bevelThickness: 0.4,
+        bevelSize: 0.3,
+        bevelSegments: 10
+    });
+
+    tongueGeometry.rotateX(Math.PI / 2);
+    tongueGeometry.translate(0, -3.5, 0);
 
     const tongue = new THREE.Mesh(tongueGeometry, tongueMaterial);
-    tongue.position.set(0, -2, -0.5);
     tongue.castShadow = true;
     tongue.receiveShadow = true;
     lowerJaw.add(tongue);
 
-    // Add tongue bumps for realism
-    const bumpGeometry = new THREE.SphereGeometry(0.15, 8, 8);
-    for (let i = 0; i < 20; i++) {
-        const bump = new THREE.Mesh(bumpGeometry, tongueMaterial);
-        bump.position.set(
-            (Math.random() - 0.5) * 4,
-            -1.7 + Math.random() * 0.3,
-            (Math.random() - 0.5) * 3
-        );
-        lowerJaw.add(bump);
+    // Add tongue papillae (taste buds texture)
+    const papillaeGeometry = new THREE.SphereGeometry(0.08, 6, 6);
+    for (let i = 0; i < 100; i++) {
+        const papilla = new THREE.Mesh(papillaeGeometry, tongueMaterial.clone());
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.random() * 2;
+        const x = Math.cos(angle) * distance;
+        const z = Math.sin(angle) * distance + 1;
+
+        papilla.position.set(x, -3.0 + Math.random() * 0.2, z);
+        papilla.scale.set(0.8 + Math.random() * 0.4, 1, 0.8 + Math.random() * 0.4);
+        lowerJaw.add(papilla);
     }
 }
 
-// Lighting
+// Create inner mouth cavity (palate and throat)
+function createInnerMouth() {
+    // Hard palate (roof of mouth)
+    const palateShape = new THREE.Shape();
+    palateShape.moveTo(-4, 3);
+    palateShape.quadraticCurveTo(-5, 1, -4.5, -1);
+    palateShape.quadraticCurveTo(-3, -2.5, 0, -3);
+    palateShape.quadraticCurveTo(3, -2.5, 4.5, -1);
+    palateShape.quadraticCurveTo(5, 1, 4, 3);
+    palateShape.quadraticCurveTo(2, 3.5, 0, 3.5);
+    palateShape.quadraticCurveTo(-2, 3.5, -4, 3);
+
+    const palateGeometry = new THREE.ExtrudeGeometry(palateShape, {
+        depth: 0.3,
+        bevelEnabled: true,
+        bevelThickness: 0.2,
+        bevelSize: 0.1,
+        bevelSegments: 5
+    });
+
+    palateGeometry.rotateX(-Math.PI / 2);
+    const palate = new THREE.Mesh(palateGeometry, innerMouthMaterial);
+    palate.position.y = 3.5;
+    palate.position.z = 0;
+    palate.receiveShadow = true;
+    upperJaw.add(palate);
+
+    // Soft palate / uvula area
+    const uvulaGeometry = new THREE.ConeGeometry(0.4, 1.5, 8);
+    const uvula = new THREE.Mesh(uvulaGeometry, innerMouthMaterial);
+    uvula.position.set(0, 2.5, -3);
+    uvula.rotation.x = Math.PI;
+    upperJaw.add(uvula);
+
+    // Inner cheeks
+    const createCheek = (side) => {
+        const cheekCurve = new THREE.QuadraticBezierCurve3(
+            new THREE.Vector3(side * 4, 2, 3),
+            new THREE.Vector3(side * 6, 0, 0),
+            new THREE.Vector3(side * 4, -2, -3)
+        );
+
+        const cheekShape = new THREE.Shape();
+        cheekShape.moveTo(0, 0);
+        cheekShape.lineTo(2, 0);
+        cheekShape.lineTo(2, 1);
+        cheekShape.lineTo(0, 1);
+
+        const cheekGeometry = new THREE.ExtrudeGeometry(cheekShape, {
+            steps: 20,
+            bevelEnabled: false,
+            extrudePath: cheekCurve
+        });
+
+        const cheek = new THREE.Mesh(cheekGeometry, innerMouthMaterial);
+        cheek.receiveShadow = true;
+        mouthGroup.add(cheek);
+    };
+
+    createCheek(1);
+    createCheek(-1);
+
+    // Back of throat
+    const throatGeometry = new THREE.CylinderGeometry(2.5, 2, 3, 16);
+    const throat = new THREE.Mesh(throatGeometry, innerMouthMaterial);
+    throat.position.set(0, 0.5, -5);
+    throat.rotation.x = Math.PI / 6;
+    throat.receiveShadow = true;
+    mouthGroup.add(throat);
+}
+
+// Enhanced lighting setup
 function setupLighting() {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    // Ambient light
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
     scene.add(ambientLight);
 
-    const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight1.position.set(5, 10, 5);
-    directionalLight1.castShadow = true;
-    directionalLight1.shadow.camera.left = -10;
-    directionalLight1.shadow.camera.right = 10;
-    directionalLight1.shadow.camera.top = 10;
-    directionalLight1.shadow.camera.bottom = -10;
-    scene.add(directionalLight1);
+    // Key light
+    const keyLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
+    keyLight.position.set(8, 12, 8);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.width = 2048;
+    keyLight.shadow.mapSize.height = 2048;
+    keyLight.shadow.camera.left = -15;
+    keyLight.shadow.camera.right = 15;
+    keyLight.shadow.camera.top = 15;
+    keyLight.shadow.camera.bottom = -15;
+    keyLight.shadow.bias = -0.0001;
+    scene.add(keyLight);
 
-    const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
-    directionalLight2.position.set(-5, 5, -5);
-    scene.add(directionalLight2);
+    // Fill light
+    const fillLight = new THREE.DirectionalLight(0xe6f2ff, 0.6);
+    fillLight.position.set(-6, 6, 6);
+    scene.add(fillLight);
 
-    const pointLight = new THREE.PointLight(0xffffff, 0.5);
-    pointLight.position.set(0, 0, 10);
-    scene.add(pointLight);
+    // Rim light
+    const rimLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    rimLight.position.set(0, 4, -10);
+    scene.add(rimLight);
+
+    // Internal mouth light (soft pink glow)
+    const mouthLight = new THREE.PointLight(0xff9999, 0.5, 15);
+    mouthLight.position.set(0, 0, 0);
+    mouthGroup.add(mouthLight);
+
+    // Front point lights for highlights
+    const frontLight1 = new THREE.PointLight(0xffffff, 0.4, 20);
+    frontLight1.position.set(5, 5, 15);
+    scene.add(frontLight1);
+
+    const frontLight2 = new THREE.PointLight(0xffffff, 0.4, 20);
+    frontLight2.position.set(-5, 5, 15);
+    scene.add(frontLight2);
 }
 
 // Mouse click handler
@@ -258,7 +515,8 @@ function onMouseClick(event) {
     if (selectedTooth) {
         selectedTooth.children.forEach(child => {
             if (child instanceof THREE.Mesh) {
-                child.material.emissive.setHex(0x000000);
+                child.material.emissive = new THREE.Color(0x000000);
+                child.material.emissiveIntensity = 0;
             }
         });
     }
@@ -269,10 +527,11 @@ function onMouseClick(event) {
 
         if (tooth.userData.isSelectable) {
             selectedTooth = tooth;
-            // Highlight the tooth
+            // Highlight the tooth with green glow
             tooth.children.forEach(child => {
                 if (child instanceof THREE.Mesh) {
-                    child.material.emissive.setHex(0x00ff00);
+                    child.material.emissive = new THREE.Color(0x00ff00);
+                    child.material.emissiveIntensity = 0.5;
                 }
             });
 
@@ -281,10 +540,10 @@ function onMouseClick(event) {
     }
 }
 
-// Mouth animation
+// Mouth animation with realistic jaw movement
 let mouthOpen = false;
 let mouthOpenAmount = 0;
-const maxMouthOpen = Math.PI / 6; // 30 degrees
+const maxMouthOpen = Math.PI / 4; // 45 degrees
 
 function openMouth() {
     mouthOpen = true;
@@ -295,7 +554,7 @@ function closeMouth() {
 }
 
 function animateMouth() {
-    const speed = 0.05;
+    const speed = 0.03;
 
     if (mouthOpen && mouthOpenAmount < maxMouthOpen) {
         mouthOpenAmount += speed;
@@ -305,15 +564,18 @@ function animateMouth() {
         if (mouthOpenAmount < 0) mouthOpenAmount = 0;
     }
 
-    // Rotate lower jaw around hinge point
+    // Rotate lower jaw around hinge point with proper pivot
     lowerJaw.rotation.x = -mouthOpenAmount;
-    lowerJaw.position.y = -Math.sin(mouthOpenAmount) * 2;
+    // Move jaw down and back for realistic movement
+    lowerJaw.position.y = -Math.sin(mouthOpenAmount) * 3;
+    lowerJaw.position.z = -Math.cos(mouthOpenAmount) * 1.5 + 1.5;
 }
 
 // Reset view
 function resetView() {
-    camera.position.set(0, 0, 15);
-    controls.reset();
+    camera.position.set(0, 2, 25);
+    controls.target.set(0, 0, 0);
+    controls.update();
     mouthGroup.rotation.set(0, 0, 0);
 }
 
@@ -334,13 +596,23 @@ createUpperTeeth();
 createLowerTeeth();
 createGums();
 createTongue();
+createInnerMouth();
 setupLighting();
+
+// Subtle idle animation
+let time = 0;
+function idleAnimation() {
+    time += 0.01;
+    // Subtle breathing-like movement
+    mouthGroup.position.y = Math.sin(time) * 0.1;
+}
 
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
 
     animateMouth();
+    idleAnimation();
     controls.update();
 
     renderer.render(scene, camera);
@@ -348,4 +620,4 @@ function animate() {
 
 animate();
 
-console.log('Bocca 3D caricata! Clicca sui denti per selezionarli.');
+console.log('🦷 Bocca 3D migliorata caricata! Clicca sui denti per selezionarli.');
