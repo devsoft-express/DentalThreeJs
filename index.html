@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bocca 3D Interattiva - Three.js</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+        }
+
+        #controls h2 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 18px;
+        }
+
+        #controls button {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        #controls button:hover {
+            background: #764ba2;
+        }
+
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-width: 300px;
+            z-index: 100;
+        }
+
+        #info p {
+            margin: 5px 0;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .highlight {
+            background: #ffd700 !important;
+            color: #000 !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <div id="controls">
+        <h2>🦷 Controlli Bocca 3D</h2>
+        <button id="openMouth">Apri Bocca</button>
+        <button id="closeMouth">Chiudi Bocca</button>
+        <button id="resetView">Reset Vista</button>
+    </div>
+
+    <div id="info">
+        <p><strong>Istruzioni:</strong></p>
+        <p>• Clicca sui denti per selezionarli</p>
+        <p>• Trascina per ruotare la vista</p>
+        <p>• Scroll per zoom</p>
+        <p>• Usa i bottoni per aprire/chiudere</p>
+    </div>
+
+    <script type="module" src="/main.js"></script>
+</body>
+</html>
